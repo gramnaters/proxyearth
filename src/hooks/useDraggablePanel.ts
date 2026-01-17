@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 export type PanelPosition = 'minimized' | 'half' | 'full';
 
@@ -12,15 +12,15 @@ export function useDraggablePanel({ onPositionChange }: UseDraggablePanelProps =
     const [position, setPosition] = useState<PanelPosition>('half');
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState(0);
+    const [hasMoved, setHasMoved] = useState(false);
     const startY = useRef(0);
     const currentTranslate = useRef(0);
-    const hasMoved = useRef(false);
 
-    const snapPositions = {
+    const snapPositions = useMemo(() => ({
         minimized: typeof window !== 'undefined' ? window.innerHeight * 0.80 : 0,
         half: typeof window !== 'undefined' ? window.innerHeight * 0.45 : 0,
         full: 0
-    };
+    }), []);
 
     const getSnapPosition = useCallback((translateY: number): PanelPosition => {
         const positions = [
@@ -46,13 +46,13 @@ export function useDraggablePanel({ onPositionChange }: UseDraggablePanelProps =
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         startY.current = e.touches[0].clientY;
         currentTranslate.current = snapPositions[position];
-        hasMoved.current = false;
+        setHasMoved(false);
     }, [position, snapPositions]);
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         startY.current = e.clientY;
         currentTranslate.current = snapPositions[position];
-        hasMoved.current = false;
+        setHasMoved(false);
         setIsDragging(true);
     }, [position, snapPositions]);
 
@@ -61,17 +61,17 @@ export function useDraggablePanel({ onPositionChange }: UseDraggablePanelProps =
         const diff = currentY - startY.current;
 
         if (Math.abs(diff) > DRAG_THRESHOLD) {
-            if (!hasMoved.current) {
-                hasMoved.current = true;
+            if (!hasMoved) {
+                setHasMoved(true);
                 setIsDragging(true);
             }
         }
 
-        if (hasMoved.current) {
+        if (hasMoved || Math.abs(diff) > DRAG_THRESHOLD) {
             const newTranslate = Math.max(0, Math.min(currentTranslate.current + diff, snapPositions.minimized));
             setDragOffset(newTranslate);
         }
-    }, [snapPositions.minimized]);
+    }, [snapPositions.minimized, hasMoved]);
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (!isDragging) return;
@@ -80,21 +80,21 @@ export function useDraggablePanel({ onPositionChange }: UseDraggablePanelProps =
         const diff = currentY - startY.current;
 
         if (Math.abs(diff) > DRAG_THRESHOLD) {
-            hasMoved.current = true;
+            setHasMoved(true);
         }
 
-        if (hasMoved.current) {
+        if (hasMoved || Math.abs(diff) > DRAG_THRESHOLD) {
             const newTranslate = Math.max(0, Math.min(currentTranslate.current + diff, snapPositions.minimized));
             setDragOffset(newTranslate);
         }
-    }, [isDragging, snapPositions.minimized]);
+    }, [isDragging, snapPositions.minimized, hasMoved]);
 
     const handleEnd = useCallback(() => {
-        if (!isDragging && !hasMoved.current) return;
+        if (!isDragging && !hasMoved) return;
 
         setIsDragging(false);
 
-        if (hasMoved.current) {
+        if (hasMoved) {
             const newPosition = getSnapPosition(dragOffset);
             setPosition(newPosition);
             setDragOffset(0);
@@ -104,8 +104,8 @@ export function useDraggablePanel({ onPositionChange }: UseDraggablePanelProps =
             }
         }
 
-        hasMoved.current = false;
-    }, [isDragging, dragOffset, getSnapPosition, onPositionChange]);
+        setHasMoved(false);
+    }, [isDragging, dragOffset, getSnapPosition, onPositionChange, hasMoved]);
 
     useEffect(() => {
         if (isDragging) {
@@ -119,12 +119,12 @@ export function useDraggablePanel({ onPositionChange }: UseDraggablePanelProps =
         }
     }, [isDragging, handleMouseMove, handleEnd]);
 
-    const getTranslateY = useCallback(() => {
-        if (isDragging && hasMoved.current) {
+    const translateY = useMemo(() => {
+        if (isDragging && hasMoved) {
             return dragOffset;
         }
         return snapPositions[position];
-    }, [isDragging, dragOffset, position, snapPositions]);
+    }, [isDragging, hasMoved, dragOffset, position, snapPositions]);
 
     const setPositionManually = useCallback((newPosition: PanelPosition) => {
         setPosition(newPosition);
@@ -137,7 +137,7 @@ export function useDraggablePanel({ onPositionChange }: UseDraggablePanelProps =
         position,
         setPosition: setPositionManually,
         isDragging,
-        translateY: getTranslateY(),
+        translateY,
         handlers: {
             onTouchStart: handleTouchStart,
             onMouseDown: handleMouseDown,

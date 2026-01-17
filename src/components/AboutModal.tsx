@@ -75,7 +75,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                     <section>
                         <h3 className="text-lg font-bold text-gray-900 mb-4">Why We Exist</h3>
                         <p className="mb-4 text-sm md:text-base">
-                            In today's digital age, data breaches have become alarmingly common. Personal information from millions of individuals is leaked, sold, and distributed across the internet with little to no consequence.
+                            In today&apos;s digital age, data breaches have become alarmingly common. Personal information from millions of individuals is leaked, sold, and distributed across the internet with little to no consequence.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="flex gap-3 items-start p-3 bg-gray-50 rounded-xl">

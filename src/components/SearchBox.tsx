@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, MapPin, Loader2, Smartphone, Mail, Info, Send } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { MapPin, Loader2, Smartphone, Mail, Info, Send } from "lucide-react";
 import AboutModal from "./AboutModal";
 import RemoveDataModal from "./RemoveDataModal";
 import InstallPWAButton from "./InstallPWAButton";
 import { Turnstile } from '@marsidev/react-turnstile';
-import { motion } from "framer-motion";
 
 interface SearchBoxProps {
     onSearch: (query: string, type: "mobile" | "email", token?: string) => void;
@@ -32,7 +30,7 @@ export default function SearchBox({ onSearch, isLoading = false }: SearchBoxProp
                 if (data.remaining !== undefined) {
                     setUsage({ count: data.count, remaining: data.remaining });
                 }
-            } catch (e) {
+            } catch {
                 console.error("Failed to fetch usage");
             }
         };
@@ -75,7 +73,7 @@ export default function SearchBox({ onSearch, isLoading = false }: SearchBoxProp
             if (data.remaining !== undefined) {
                 setUsage({ count: data.count, remaining: data.remaining });
             }
-        } catch (e) { }
+            } catch { /* ignore */ }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {

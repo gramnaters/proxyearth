@@ -1,38 +1,48 @@
-import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 interface LoadingStepsProps {
     isLoading: boolean;
 }
 
-export default function LoadingSteps({ isLoading }: LoadingStepsProps) {
-    const [currentStep, setCurrentStep] = useState(0);
+const STEP_INTERVAL = 1500;
+const STEPS = [
+    'Initializing tracking system...',
+    'Connecting to network towers...',
+    'Triangulating signal...',
+    'Fetching location data...'
+];
 
-    const steps = [
-        'Initializing tracking system...',
-        'Connecting to network towers...',
-        'Triangulating signal...',
-        'Fetching location data...'
-    ];
+// Custom hook to track elapsed time with periodic updates
+function useStepProgress(isLoading: boolean): number {
+    const startTimeRef = useRef<number | null>(null);
 
+    // Reset start time when loading begins
     useEffect(() => {
-        if (!isLoading) {
-            setCurrentStep(0);
-            return;
+        if (isLoading) {
+            startTimeRef.current = Date.now();
+        } else {
+            startTimeRef.current = null;
         }
-
-        // Advance steps every 1.5s to match a ~6-7s total duration roughly
-        const interval = setInterval(() => {
-            setCurrentStep((prev) => {
-                if (prev < steps.length - 1) {
-                    return prev + 1;
-                }
-                return prev;
-            });
-        }, 1500);
-
-        return () => clearInterval(interval);
     }, [isLoading]);
+
+    const subscribe = (callback: () => void) => {
+        if (!isLoading) return () => {};
+        const interval = setInterval(callback, STEP_INTERVAL);
+        return () => clearInterval(interval);
+    };
+
+    const getSnapshot = () => {
+        if (!isLoading || startTimeRef.current === null) return 0;
+        const elapsed = Date.now() - startTimeRef.current;
+        const step = Math.floor(elapsed / STEP_INTERVAL);
+        return Math.min(step, STEPS.length - 1);
+    };
+
+    return useSyncExternalStore(subscribe, getSnapshot, () => 0);
+}
+
+export default function LoadingSteps({ isLoading }: LoadingStepsProps) {
+    const currentStep = useStepProgress(isLoading);
 
     if (!isLoading) return null;
 
@@ -43,7 +53,7 @@ export default function LoadingSteps({ isLoading }: LoadingStepsProps) {
             <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-8" />
 
             <div className="space-y-6">
-                {steps.map((step, index) => (
+                {STEPS.map((step, index) => (
                     <div
                         key={index}
                         className={`flex items-center gap-4 transition-all duration-300 ${index <= currentStep ? 'opacity-100' : 'opacity-40'
