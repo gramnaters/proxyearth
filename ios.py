@@ -397,9 +397,49 @@ def check_account(cookie_dict):
 
 # ─── TOKEN — iOS DIRECT CALL ─────────────────────────────────────────────────
 
+def _resolve_session_cookies(nfid):
+    """Given a bare NetflixId, hit Netflix web to obtain a full session
+    (refreshed NetflixId + SecureNetflixId). Returns cookie dict or None."""
+    try:
+        s = requests.Session()
+        s.cookies.set("NetflixId", nfid, domain=".netflix.com", path="/")
+        s.headers.update({"User-Agent": WEB_UA, "Accept-Language": "en-US,en;q=0.9"})
+
+        # Try multiple endpoints — SecureNetflixId may be set by specific pages
+        for url in ("https://www.netflix.com/YourAccount",
+                     "https://www.netflix.com/browse",
+                     "https://www.netflix.com/SwitchProfile"):
+            r = s.get(url, timeout=20, allow_redirects=True)
+            cd = s.cookies.get_dict()
+            if cd.get("NetflixId") and cd.get("SecureNetflixId"):
+                return cd
+
+            # Check raw Set-Cookie headers (some cookie jars miss Secure cookies)
+            snfid_val = None
+            for hdr_val in r.headers.get("Set-Cookie", "").split(","):
+                m = re.search(r"SecureNetflixId=([^;\s]+)", hdr_val)
+                if m:
+                    snfid_val = m.group(1)
+                    break
+            if snfid_val:
+                cd["SecureNetflixId"] = snfid_val
+                return cd
+
+            # Also scan page content for SecureNetflixId in JS / reactContext
+            m = re.search(r'SecureNetflixId["\s:=]+([^\s";&<>]+)', r.text)
+            if m:
+                cd["SecureNetflixId"] = m.group(1)
+                return cd
+
+    except Exception as e:
+        logger.warning(f"[RESOLVE] session: {e}")
+    return None
+
+
 def generate_nftoken(cookie_dict_or_nfid, session_cookies=None):
     """Generate token from cookie dict OR plain nfID string.
-    Uses Android endpoint with nfID-only cookie for best compatibility."""
+    If only NetflixId is provided, auto-resolves SecureNetflixId via web session.
+    Uses Android endpoint first, falls back to iOS."""
 
     # Accept either a plain nfID string or a cookie dict
     if isinstance(cookie_dict_or_nfid, str):
@@ -414,8 +454,19 @@ def generate_nftoken(cookie_dict_or_nfid, session_cookies=None):
     nfid = cookie_dict.get("NetflixId", "")
     if not nfid: return None, ["NetflixId"]
 
-    # Use only NetflixId for the Android endpoint — no other cookies needed
-    cookie_str = f"NetflixId={nfid}"
+    # Auto-resolve SecureNetflixId if missing
+    if not cookie_dict.get("SecureNetflixId"):
+        logger.info("[TOKEN] SecureNetflixId missing — resolving via web session...")
+        resolved = _resolve_session_cookies(nfid)
+        if resolved:
+            cookie_dict = resolved
+            nfid = cookie_dict["NetflixId"]
+            logger.info("[TOKEN] Session resolved — got refreshed cookies")
+        else:
+            return None, ["SecureNetflixId (auto-resolve failed)"]
+
+    # Build cookie string from all session cookies for best compatibility
+    cookie_str = "; ".join(f"{k}={v}" for k, v in cookie_dict.items() if v)
 
     # Try Android endpoint first (works with nfID-only)
     for label, url, ua in [("Android", ANDROID_URL, ANDROID_UA), ("iOS", IOS_URL, IOS_UA)]:
@@ -669,13 +720,16 @@ async def process_cookie_text(text, mode, source, update, context, filter_batch=
 
 # ─── DIRECT nfID TOKEN GENERATION ─────────────────────────────────────────
 
-async def process_nfid_direct(nfid, update, context):
-    """Generate token directly from a plain nfID string — no account check."""
+async def process_nfid_direct(cookie_dict, update, context):
+    """Generate token directly from nfID cookie dict — no account check.
+    If SecureNetflixId is missing, auto-resolves it via web session."""
     global stats
 
+    has_secure = bool(cookie_dict.get("SecureNetflixId"))
     sm = await update.message.reply_text(
         "🔑 <b>nfID Detected</b>\n\n"
-        "<b>Status:</b> Generating token via Android endpoint...\n"
+        f"<b>Status:</b> {'Generating' if has_secure else 'Resolving session &amp; generating'} token...\n"
+        "<b>Endpoint:</b> Android (android13.prod.ftl.netflix.com)\n"
         "<b>Input:</b> Raw nfID string\n\n"
         "⏳ Please wait...",
         parse_mode="HTML"
@@ -683,7 +737,7 @@ async def process_nfid_direct(nfid, update, context):
 
     stats["total_checked"] += 1
     loop = asyncio.get_event_loop()
-    ti, missing = await loop.run_in_executor(None, lambda: generate_nftoken(nfid))
+    ti, missing = await loop.run_in_executor(None, lambda: generate_nftoken(cookie_dict))
 
     if ti:
         stats["total_valid"] += 1
@@ -750,18 +804,26 @@ async def handle_message(update, context):
 
     # Full cookie format (contains NetflixId=...)
     if "NetflixId" in text or "netflixid" in text.lower():
-        await process_cookie_text(text, context.user_data.get("mode","fullinfo"), "Text Input", update, context)
+        cd = parse_cookies_from_text(text)
+        mode = context.user_data.get("mode", "fullinfo")
+        if cd and cd.get("NetflixId"):
+            if mode == "tokenonly":
+                await process_nfid_direct(cd, update, context)
+            else:
+                await process_cookie_text(text, mode, "Text Input", update, context)
+        else:
+            await process_cookie_text(text, mode, "Text Input", update, context)
         return
 
-    # Plain nfID string — generate token directly (no account check needed)
-    nfid = text.strip().split()[0].strip()  # take first token in case of extra whitespace
+    # Plain nfID string (no key= prefix) — generate token directly
+    nfid = text.split()[0].strip()
     if len(nfid) > 20:
-        await process_nfid_direct(nfid, update, context)
+        await process_nfid_direct({"NetflixId": nfid}, update, context)
         return
 
     await update.message.reply_text(
         "❓ Send one of:\n"
-        "• A raw <code>nfID</code> string (long token value)\n"
+        "• A raw <code>nfID</code> string (the long NetflixId value)\n"
         "• Full cookie with <code>NetflixId=...</code>",
         parse_mode="HTML"
     )
