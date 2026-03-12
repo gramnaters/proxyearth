@@ -181,7 +181,7 @@ export default function Home() {
             // If we have no result, background might stay or reset. 
             // If data.status is failed, we probably don't have coords.
 
-            setErrorMessage(data.message || "We couldn't find any data.");
+            setErrorMessage(typeof data.message === 'string' ? data.message : "We couldn't find any data.");
             setShowError(true);
             setLoadingStage('idle');
         }

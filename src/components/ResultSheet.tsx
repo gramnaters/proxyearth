@@ -1,9 +1,7 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Search, MapIcon, Fingerprint, CheckCircle, Smartphone, Mail, MapPin, User, Info } from "lucide-react";
+import { X, CheckCircle, MapPin } from "lucide-react";
 import SupportButton from "./SupportButton";
-import { cn } from "@/lib/utils";
 
 // Define a flexible type for our result data
 export interface ResultData {
@@ -14,17 +12,21 @@ export interface ResultData {
     address?: string;
     carrier?: string;
     id?: string;
-    [key: string]: any; // fallback for extra API fields
+    location?: string;
+    alt?: string;
+    fname?: string;
+    lat?: number;
+    lon?: number;
+    circle?: string;
+    [key: string]: string | number | undefined; // fallback for extra API fields
 }
 
 interface ResultSheetProps {
-    isOpen?: boolean; // Controlled by parent presence
     onClose: () => void;
     data: ResultData | null;
-    isLoading?: boolean;
 }
 
-export default function ResultSheet({ isOpen, onClose, data, isLoading }: ResultSheetProps) {
+export default function ResultSheet({ onClose, data }: ResultSheetProps) {
     // If loading, we could show a different state or just keep the sheet closed until loaded
     // But requirement says "Result panel must open in a half-screen bottom sheet"
     // We can show loading inside the sheet or handle it in the parent.
@@ -104,10 +106,10 @@ export default function ResultSheet({ isOpen, onClose, data, isLoading }: Result
                                 </div>
                             )}
 
-                            {/* Father's Name / fname Card */}
+                            {/* Father&apos;s Name / fname Card */}
                             {data.fname && (
                                 <div className="bg-gray-50 rounded-2xl p-4">
-                                    <p className="text-sm text-gray-400 mb-1">Father's Name</p>
+                                    <p className="text-sm text-gray-400 mb-1">Father&apos;s Name</p>
                                     <p className="text-base font-medium text-gray-900 break-words uppercase">
                                         {data.fname}
                                     </p>

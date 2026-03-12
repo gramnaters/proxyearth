@@ -27,7 +27,6 @@ export async function verifyTurnstileToken(token: string, ip?: string): Promise<
 export function isAllowedDomain(request: NextRequest): boolean {
     const referer = request.headers.get('referer');
     const origin = request.headers.get('origin');
-    const host = request.headers.get('host');
 
     // Allow requests if they originate from our domain
     // Or localhost for development

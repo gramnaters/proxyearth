@@ -51,7 +51,7 @@ export default function DeepSearchTerminal({ isActive }: DeepSearchTerminalProps
                     }
                 }, 15);
 
-                timers.push(typingInterval as any);
+                timers.push(typingInterval as unknown as NodeJS.Timeout);
             }, log.delay);
 
             timers.push(timer);

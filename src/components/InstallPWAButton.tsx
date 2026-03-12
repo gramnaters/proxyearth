@@ -1,31 +1,47 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import { Download } from 'lucide-react';
 
+interface BeforeInstallPromptEvent extends Event {
+    readonly platforms: string[];
+    readonly userChoice: Promise<{
+        outcome: 'accepted' | 'dismissed';
+        platform: string;
+    }>;
+    prompt(): Promise<void>;
+}
+
+// Custom hook to check if app is installed
+function useIsInstalled() {
+    return useSyncExternalStore(
+        (callback) => {
+            const mediaQuery = window.matchMedia('(display-mode: standalone)');
+            mediaQuery.addEventListener('change', callback);
+            return () => mediaQuery.removeEventListener('change', callback);
+        },
+        () => {
+            if (typeof window === 'undefined') return false;
+            if (window.matchMedia('(display-mode: standalone)').matches) return true;
+            // Check iOS standalone mode
+            if ('standalone' in navigator && (navigator as Navigator & { standalone?: boolean }).standalone === true) return true;
+            return false;
+        },
+        () => false // Server snapshot
+    );
+}
+
 export default function InstallPWAButton() {
-    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-    const [isInstalled, setIsInstalled] = useState(false);
+    const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+    const isInstalled = useIsInstalled();
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        if (window.matchMedia('(display-mode: standalone)').matches) {
-            setIsInstalled(true);
-            return;
-        }
-
-        if ((navigator as any).standalone === true) {
-            setIsInstalled(true);
-            return;
-        }
-
         const handleBeforeInstallPrompt = (e: Event) => {
             e.preventDefault();
-            setDeferredPrompt(e);
-            setIsInstalled(false);
+            setDeferredPrompt(e as BeforeInstallPromptEvent);
         };
 
         const handleAppInstalled = () => {
-            setIsInstalled(true);
             setDeferredPrompt(null);
         };
 

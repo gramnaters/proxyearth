@@ -2,7 +2,6 @@
 
 import { X, Shield, Lock, EyeOff, CheckCircle, Smartphone, Mail, AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 interface RemoveDataModalProps {
     isOpen: boolean;
@@ -75,7 +74,7 @@ export default function RemoveDataModal({ isOpen, onClose }: RemoveDataModalProp
                 setStatus('error');
                 setMessage(data.error || "Something went wrong. Please try again.");
             }
-        } catch (error) {
+        } catch {
             setStatus('error');
             setMessage("Network error. Please try again later.");
         }
@@ -219,13 +218,13 @@ export default function RemoveDataModal({ isOpen, onClose }: RemoveDataModalProp
                             <h3 className="text-lg font-bold text-gray-900 mb-3">How Data Removal Works</h3>
                             <ul className="space-y-2 list-disc pl-5 text-gray-600">
                                 <li>
-                                    <strong>Instant Action:</strong> When you submit your mobile number or email using the form above, it is immediately added to our "Do Not Display" registry.
+                                    <strong>Instant Action:</strong> When you submit your mobile number or email using the form above, it is immediately added to our &quot;Do Not Display&quot; registry.
                                 </li>
                                 <li>
                                     <strong>No Questions Asked:</strong> You do not need to provide proof of identity. If you ask us to hide a number, we hide it.
                                 </li>
                                 <li>
-                                    <strong>Permanent & Secure:</strong> Your request is stored securely in our encrypted database, ensuring that future searches for this specific data point returns "No Result".
+                                    <strong>Permanent &amp; Secure:</strong> Your request is stored securely in our encrypted database, ensuring that future searches for this specific data point returns &quot;No Result&quot;.
                                 </li>
                             </ul>
                         </section>

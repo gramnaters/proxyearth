@@ -1,6 +1,6 @@
 export interface ApiResult {
     status?: boolean | string;
-    data?: any;
+    data?: Record<string, unknown>;
     message?: string;
     // Mobile specific
     mobile?: string;
@@ -8,7 +8,18 @@ export interface ApiResult {
     circle?: string;
     // Email specific
     email?: string;
-    [key: string]: any;
+    // Rate limit
+    rateLimit?: boolean;
+    // Additional fields
+    name?: string;
+    address?: string;
+    location?: string;
+    alt?: string;
+    fname?: string;
+    id?: string;
+    lat?: number;
+    lon?: number;
+    [key: string]: string | number | boolean | Record<string, unknown> | undefined;
 }
 
 export async function checkDataLeak(query: string, type: 'mobile' | 'email', token?: string): Promise<ApiResult | null> {
